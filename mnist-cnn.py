@@ -1,87 +1,56 @@
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 
-def weight_variable(shape):
-	initial = tf.truncated_normal(shape)
-	return tf.Variable(initial)
+sess = tf.InteractiveSession()
 
-def bias_variable(shape):
-	initial = tf.constant(0.1, shape=shape)
-	return tf.Variable(initial)
+mnist = input_data.read_data_sets('data/', one_hot=True)
 
-def conv2d(x, W):
-	return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+x = tf.placeholder(tf.float32, name='x')
 
-def max_pool_2x2(x):
-	return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+x1 = tf.reshape(x, [-1, 28, 28, 1])
 
-# 第1層 (入力層)
-x = tf.placeholder("float", [None, 784])
+k0 = tf.Variable(tf.truncated_normal([5, 5, 1, 48], mean=0.0, stddev=0.1))
+x2 = tf.nn.relu(tf.nn.conv2d(x1, k0, strides=[1, 1, 1, 1], padding='SAME'))
+x3 = tf.nn.max_pool(x2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
 
-# 形状変更
-x_image = tf.reshape(x, [-1, 28, 28, 1])
+k1 = tf.Variable(tf.truncated_normal([5, 5, 48, 96]))
+x4 = tf.nn.relu(tf.nn.conv2d(x3, k1, strides=[1,1,1,1], padding='SAME'))
+x4_ = tf.nn.max_pool(x4, ksize=[1,2,2,1], strides=[1,2,2,1], padding='VALID')
 
-# 第2層 (畳み込み層)
-W_conv1 = weight_variable([5, 5, 1, 32])
-b_conv1 = bias_variable([32])
-y_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
+x5 = tf.reshape(x4_, [-1, 7*7*96])
 
-# 第3層 (プーリング層)
-y_pool1 = max_pool_2x2(y_conv1)
+w6 = tf.Variable(tf.zeros([7*7*96, 512]))
+b6 = tf.Variable([0.1] * 512)
+x6 = tf.matmul(x5, w6) + b6
 
-# 第4層 (畳み込み層)
-W_conv2 = weight_variable([5, 5, 32, 64])
-b_conv2 = bias_variable([64])
-y_conv2 = tf.nn.relu(conv2d(y_pool1, W_conv2) + b_conv2)
+x7 = tf.nn.relu(x6)
 
-# 第5層 (プーリング層)
-y_pool2 = max_pool_2x2(y_conv2)
+w8 = tf.Variable(tf.zeros([512, 10]))
+b8 = tf.Variable([0.1] * 10)
+x8 = tf.matmul(x7, w8) + b8
 
-# 形状変更
-y_pool2_flat = tf.reshape(y_pool2, [-1, 7 * 7 * 64])
+y = tf.nn.softmax(x8)
 
-# 第6層 (全結合層)
-W_fc1 = weight_variable([7 * 7 * 64, 1024])
-b_fc1 = bias_variable([1024])
-y_fc1 = tf.nn.relu(tf.matmul(y_pool2_flat, W_fc1) + b_fc1)
+labels = tf.placeholder(tf.float32, name='labels')
+loss = -tf.reduce_sum(labels * tf.log(y))
+optimizer = tf.train.AdamOptimizer(1e-3).minimize(loss)
 
-# 第7層 (全結合層)
-W_fc2 = weight_variable([1024, 10])
-b_fc2 = bias_variable([10])
-y = tf.nn.softmax(tf.matmul(y_fc1, W_fc2) + b_fc2)
+prediction_match = tf.equal(tf.argmax(y, axis=1), tf.argmax(labels, axis=1))
+accuracy = tf.reduce_mean(tf.cast(prediction_match, tf.float32), name='accuracy')
 
-# 損失関数を計算グラフを作成する
-t = tf.placeholder("float", [None, 10])
-cross_entropy = -tf.reduce_sum(t * tf.log(y))
+BATCH_SIZE = 32
+NUM_TRAIN = 10_000
+OUTPUT_BY = 500
 
-# 次の(1)、(2)を行うための計算グラフを作成する。
-# (1) 損失関数に対するネットワークを構成するすべての変数の勾配を計算する。
-# (2) 勾配方向に学習率分移動して、すべての変数を更新する。
-train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+sess.run(tf.global_variables_initializer())
+for i in range(NUM_TRAIN):
+	x_batch, labels_batch = mnist.train.next_batch(BATCH_SIZE)
+	inout = {x: x_batch, labels: labels_batch}
+	if i % OUTPUT_BY == 0:
+		train_accuracy = accuracy.eval(feed_dict=inout)
+		print('step {:d}, accuracy {:.2f}'.format(i, train_accuracy))
 
-# 初期化を行うための計算グラフを作成する。
-init = tf.global_variables_initializer()
+	optimizer.run(feed_dict=inout)
 
-# テストデータに対する正答率を計算するための計算グラフを作成する。
-correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(t, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-
-# MNIST 入力データ
-mnist = input_data.read_data_sets("data/", one_hot=True)
-
-# セッションを作成して、計算グラフを実行する。
-with tf.Session() as sess:
-	# 初期化を実行する。
-	sess.run(init)
-
-	# 学習を実行する。
-	for i in range(20000):
-		x_batch, t_batch = mnist.train.next_batch(50)
-		sess.run(train_step, feed_dict={x: x_batch, t: t_batch})
-
-		if i % 100 == 0:
-			result = sess.run(accuracy, feed_dict={x: mnist.test.images, t: mnist.test.labels})
-			print(result)
-
-	result = sess.run(accuracy, feed_dict={x: mnist.test.images, t: mnist.test.labels})
-	print("accuracy:", result)
+test_accuracy = accuracy.eval(feed_dict={x: mnist.test.images, labels: mnist.test.labels})
+print('test accuracy {:.2f}'.format(test_accuracy))

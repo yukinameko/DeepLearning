@@ -1,5 +1,7 @@
 #GCPでのDeepLearning勉強用
+
 #動作環境
+
 GCPのVMインスタンス
 
 - マシンタイプ  
